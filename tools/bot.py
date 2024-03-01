@@ -31,6 +31,7 @@ from langchain.tools import BaseTool, StructuredTool, tool
 from .agent import CustomSearchTool
 from langchain.agents import AgentExecutor
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain.memory import PostgresChatMessageHistory
 
 logger = getLogger(__name__)
 template_engine = get_template_db()
@@ -42,6 +43,11 @@ QUESTION_TEMPLATE = template_engine['question']
 VALIDITY_TEMPLATE = template_engine['business']['validator']
 
 
+def get_message_history(session_id):
+	return PostgresChatMessageHistory(
+            connection_string= st.secrets.connection,
+            session_id=session_id,
+            )
 
 class Bot:
 
@@ -99,15 +105,12 @@ class Bot:
 
         chat_template = ChatPromptTemplate.from_messages([system_message, system_template_2, prompt, human_template, scratch_pad])
         
-        memory = ChatMessageHistory()
-
-
-        print(chat_template.messages)
 
         tools = [CustomSearchTool(), ]
         agent = create_openai_functions_agent(llm = llm,  tools = tools, prompt = chat_template)
-        executor = AgentExecutor.from_agent_and_tools(  agent=agent, tools=tools, verbose=True )
+        executor = AgentExecutor.from_agent_and_tools(  agent=agent, tools=tools)
         
+        memory = get_message_history(session_id)
 
         agent_with_chat_history = RunnableWithMessageHistory(
             executor,
@@ -116,6 +119,7 @@ class Bot:
             lambda session_id: memory,
             input_messages_key="human_input",
             history_messages_key="chat_history",
+            verbose = False
         )
 
         message = agent_with_chat_history.invoke(
@@ -123,5 +127,5 @@ class Bot:
             config={"configurable": {"session_id": session_id}},
         )
         
-        return message
+        return message['output']
 
